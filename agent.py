@@ -158,62 +158,105 @@ class PlayerAgent(ReActAgent):
         # 获取当前对话历史（不包括即将添加的输入消息）
         current_messages = await self.memory.get_memory()
         
-        # 使用上下文管理器压缩对话历史（如果消息数量较多）
-        if current_messages and len(current_messages) > 10:
-            # 判断是否需要压缩
-            if self.context_manager.should_compress(current_messages):
-                compressed_messages = self.context_manager.compress_history(current_messages)
-                
-                # 如果压缩后消息数量减少，临时替换记忆内容
-                if len(compressed_messages) < len(current_messages):
-                    # 保存原始记忆内容
-                    original_messages = current_messages.copy()
+        try:
+            # 获取当前对话历史（不包括即将添加的输入消息）
+            current_messages = await self.memory.get_memory()
+            
+            # 使用上下文管理器压缩对话历史（如果消息数量较多）
+            if current_messages and len(current_messages) > 10:
+                # 判断是否需要压缩
+                if self.context_manager.should_compress(current_messages):
+                    compressed_messages = self.context_manager.compress_history(current_messages)
                     
-                    # 临时替换为压缩后的消息
-                    await self.memory.clear()
-                    await self.memory.add(compressed_messages, allow_duplicates=True)
-                    
-                    # 调用父类方法（输入消息会被添加到压缩后的 memory）
-                    try:
+                    # 如果压缩后消息数量减少，临时替换记忆内容
+                    if len(compressed_messages) < len(current_messages):
+                        # 保存原始记忆内容
+                        original_messages = current_messages.copy()
+                        
+                        # 临时替换为压缩后的消息
+                        await self.memory.clear()
+                        await self.memory.add(compressed_messages, allow_duplicates=True)
+                        
+                        # 调用父类方法（输入消息会被添加到压缩后的 memory）
+                        # 如果 msg 不为 None，将其作为位置参数传递；否则不传位置参数
+                        try:
+                            if msg is not None:
+                                response_msg = await super().__call__(msg, **kwargs)
+                            else:
+                                response_msg = await super().__call__(**kwargs)
+                        finally:
+                            # 恢复原始记忆内容
+                            await self.memory.clear()
+                            await self.memory.add(original_messages, allow_duplicates=True)
+                            # 注意：输入消息会通过 observe 重新添加，所以不需要手动添加
+                    else:
+                        # 压缩效果不明显，直接调用父类方法
                         if msg is not None:
                             response_msg = await super().__call__(msg, **kwargs)
                         else:
                             response_msg = await super().__call__(**kwargs)
-                    finally:
-                        # 恢复原始记忆内容
-                        await self.memory.clear()
-                        await self.memory.add(original_messages, allow_duplicates=True)
                 else:
-                    # 压缩效果不明显，直接调用父类方法
+                    # 不需要压缩，直接调用父类方法
                     if msg is not None:
                         response_msg = await super().__call__(msg, **kwargs)
                     else:
                         response_msg = await super().__call__(**kwargs)
             else:
-                # 不需要压缩，直接调用父类方法
+                # 消息数量较少，不需要压缩，直接调用父类方法
                 if msg is not None:
                     response_msg = await super().__call__(msg, **kwargs)
                 else:
                     response_msg = await super().__call__(**kwargs)
-        else:
-            # 消息数量较少，不需要压缩，直接调用父类方法
-            if msg is not None:
-                response_msg = await super().__call__(msg, **kwargs)
-            else:
-                response_msg = await super().__call__(**kwargs)
 
-        # 如果请求了结构化输出，验证输出
-        structured_model = kwargs.get("structured_model")
-        if structured_model is not None:
-            response_msg = self._validate_structured_output(
-                response_msg,
-                structured_model,
+            # 如果请求了结构化输出，验证输出
+            structured_model = kwargs.get("structured_model")
+            if structured_model is not None:
+                response_msg = self._validate_structured_output(
+                    response_msg,
+                    structured_model,
+                )
+
+            # 检查响应长度（2048字符限制）
+            response_msg = self._check_response_length(response_msg)
+
+            return response_msg
+            
+        except Exception as e:
+            # 捕获所有异常，返回默认输出以确保游戏继续
+            logger.error(
+                f"{self.name}: Error in __call__: {e}, "
+                f"returning default response.",
+                exc_info=True,
             )
-
-        # 检查响应长度（2048字符限制）
-        response_msg = self._check_response_length(response_msg)
-
-        return response_msg
+            
+            # 创建默认响应消息
+            from agentscope.message import Msg
+            
+            # 获取输入消息的内容（如果有）
+            input_content = ""
+            if msg is not None:
+                if isinstance(msg, list):
+                    input_content = " ".join([m.content for m in msg if hasattr(m, 'content')])
+                elif hasattr(msg, 'content'):
+                    input_content = msg.content
+            
+            # 创建默认响应
+            default_content = f"抱歉，我暂时无法生成回复。{input_content[:50]}..."
+            if not input_content:
+                default_content = "我理解了，但我暂时无法生成详细回复。"
+            
+            default_msg = Msg(
+                name=self.name,
+                content=default_content,
+                role="assistant",
+            )
+            
+            # 如果请求了结构化输出，添加默认 metadata
+            structured_model = kwargs.get("structured_model")
+            if structured_model is not None:
+                default_msg.metadata = self._get_fallback_metadata(structured_model)
+            
+            return default_msg
 
     def _check_response_length(self, msg: Msg) -> Msg:
         """Check and truncate response content if it exceeds the limit.
