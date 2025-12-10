@@ -64,7 +64,7 @@ class PlayerAgent(ReActAgent):
 
         # 强制使用 DashScope 和 qwen3-max（比赛要求）
         model = DashScopeChatModel(
-            api_key=os.environ.get("DASHSCOPE_API_KEY"),
+            api_key = os.environ.get("DASHSCOPE_API_KEY"),
             model_name="qwen3-max",
         )
         formatter = DashScopeMultiAgentFormatter()

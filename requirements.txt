@@ -1,4 +1,4 @@
-# 狼人杀游戏 Agent 依赖包
+﻿# 狼人杀游戏 Agent 依赖包
 # Werewolf Game Agent Dependencies
 
 # 核心框架
