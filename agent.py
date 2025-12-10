@@ -3,7 +3,10 @@
 """PlayerAgent for werewolf game competition."""
 import os
 import json
+from pathlib import Path
 from typing import Any, Type
+
+import yaml
 
 from pydantic import BaseModel, ValidationError
 
@@ -41,17 +44,43 @@ class PlayerAgent(ReActAgent):
         Args:
             name (str): The name of the agent.
         """
-        # 尝试从环境变量加载配置（方案B：保留个性化提示词功能）
-        agent_config_str = os.environ.get("AGENT_CONFIG", "{}")
         agent_config = None
+        
+        # 优先级1: 尝试从环境变量加载配置
+        agent_config_str = os.environ.get("AGENT_CONFIG", "{}")
         if agent_config_str and agent_config_str != "{}":
             try:
                 agent_config = json.loads(agent_config_str)
             except json.JSONDecodeError:
                 logger.warning(
                     f"Failed to parse AGENT_CONFIG environment variable, "
-                    f"using default prompt."
+                    f"trying to load from YAML file."
                 )
+        
+        # 优先级2: 如果环境变量没有配置，尝试从YAML文件加载
+        if agent_config is None:
+            config_path = Path(__file__).parent / "config" / "agent_config.yaml"
+            if config_path.exists():
+                try:
+                    with open(config_path, 'r', encoding='utf-8') as f:
+                        yaml_data = yaml.safe_load(f)
+                    
+                    # 解析YAML结构：agent -> list -> 第一个元素
+                    if isinstance(yaml_data, dict) and "agent" in yaml_data:
+                        agents = yaml_data["agent"]
+                        if isinstance(agents, list) and len(agents) > 0:
+                            agent_config = agents[0]
+                        elif isinstance(agents, dict):
+                            # 如果agent直接是字典而不是列表
+                            agent_config = agents
+                except (yaml.YAMLError, KeyError, IndexError, Exception) as e:
+                    logger.warning(
+                        f"Failed to load config from {config_path}: {e}, "
+                        f"using default prompt."
+                    )
+            else:
+                # 文件不存在，静默跳过，使用默认提示词
+                pass
         
         # 构建系统提示词
         if agent_config:

@@ -13,8 +13,8 @@ pydantic>=2.0.0
 # Numerical computing
 numpy>=1.24.0
 
-# YAML 配置文件解析（如果使用配置文件）
-# YAML configuration file parsing (if using config files)
+# YAML 配置文件解析（支持从 config/agent_config.yaml 加载配置）
+# YAML configuration file parsing (supports loading from config/agent_config.yaml)
 pyyaml>=6.0
 
 # 注意：
@@ -25,4 +25,6 @@ pyyaml>=6.0
 #    Must set environment variable DASHSCOPE_API_KEY to use DashScope cloud API
 # 3. Python 版本要求：>= 3.10
 #    Python version requirement: >= 3.10
+# 4. 配置加载优先级：环境变量 AGENT_CONFIG > config/agent_config.yaml > 默认提示词
+#    Config loading priority: AGENT_CONFIG env var > config/agent_config.yaml > default prompt
 
